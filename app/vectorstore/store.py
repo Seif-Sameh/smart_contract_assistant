@@ -2,7 +2,7 @@
 
 from typing import Dict, List, Optional
 
-from langchain.schema import Document
+from langchain_core.documents import Document
 
 
 class VectorStoreManager:

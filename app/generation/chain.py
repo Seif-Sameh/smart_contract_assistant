@@ -2,9 +2,9 @@
 
 from typing import Dict, List, Optional
 
-from langchain.prompts import PromptTemplate
-from langchain.schema.runnable import RunnablePassthrough
-from langchain.schema.output_parser import StrOutputParser
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
 
 from app.retrieval.retriever import DocumentRetriever
 

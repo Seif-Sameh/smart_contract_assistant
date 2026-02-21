@@ -3,7 +3,7 @@
 from typing import Dict, List
 
 from langchain.chains.summarize import load_summarize_chain
-from langchain.schema import Document
+from langchain_core.documents import Document
 
 
 class DocumentSummarizer:
