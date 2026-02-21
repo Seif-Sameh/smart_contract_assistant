@@ -26,6 +26,11 @@ Answer with specific references to the relevant sections/pages:"""
 class RAGChain:
     """Retrieval-Augmented Generation chain for document Q&A."""
 
+    _PROMPT = PromptTemplate(
+        input_variables=["context", "history", "question"],
+        template=PROMPT_TEMPLATE,
+    )
+
     def __init__(self, llm, retriever: DocumentRetriever) -> None:
         """Initialize the RAGChain.
 
@@ -35,10 +40,6 @@ class RAGChain:
         """
         self.llm = llm
         self.retriever = retriever
-        self.prompt = PromptTemplate(
-            input_variables=["context", "history", "question"],
-            template=PROMPT_TEMPLATE,
-        )
 
     def invoke(
         self,
@@ -69,7 +70,7 @@ class RAGChain:
         history_str = self._format_history(conversation_history)
 
         # Build the prompt
-        prompt_text = self.prompt.format(
+        prompt_text = self._PROMPT.format(
             context=context,
             history=history_str,
             question=question,
