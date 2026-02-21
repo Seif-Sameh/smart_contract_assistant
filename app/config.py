@@ -1,6 +1,7 @@
 """Centralized configuration using pydantic-settings."""
 
 from functools import lru_cache
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,7 +28,7 @@ class Settings(BaseSettings):
     top_k: int = 5
 
     # API Keys
-    openai_api_key: str = None
+    openai_api_key: Optional[str] = None
 
     # Data Directory
     data_dir: str = "./data"

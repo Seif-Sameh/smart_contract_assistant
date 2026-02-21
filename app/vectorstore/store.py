@@ -112,9 +112,9 @@ class VectorStoreManager:
         self._store = None
 
         if self.store_type == "chroma":
+            import os
             import shutil
 
-            import os
             if os.path.exists(self.persist_directory):
                 shutil.rmtree(self.persist_directory)
 
