@@ -7,8 +7,8 @@ A production-ready Python web application for intelligent contract and document 
 ## Features
 
 - 📄 **Document Ingestion**: Parse PDF and DOCX files with page-level metadata
-- 🔍 **Semantic Search**: Dense vector retrieval using SentenceTransformers or OpenAI embeddings
-- 🤖 **RAG Pipeline**: Context-grounded Q&A using LangChain and OpenAI / HuggingFace LLMs
+- 🔍 **Semantic Search**: Dense vector retrieval using SentenceTransformers (local, no API key needed)
+- 🤖 **RAG Pipeline**: Context-grounded Q&A using LangChain and Groq (Llama 3.1 / Mixtral) or HuggingFace LLMs
 - 💬 **Multi-turn Conversations**: Session-based conversation history
 - 📝 **Document Summarization**: Map-reduce and refine summarization strategies
 - 🛡️ **Guardrails**: Safety filtering and automatic legal disclaimers
@@ -46,9 +46,9 @@ See [`docs/architecture.md`](docs/architecture.md) for the full component breakd
 | API | FastAPI + Uvicorn |
 | UI | Gradio |
 | LLM Orchestration | LangChain |
-| LLM (cloud) | OpenAI GPT-3.5/GPT-4 |
+| LLM (cloud) | Groq (Llama 3.1, Mixtral, Gemma) |
 | LLM (local) | HuggingFace Transformers |
-| Embeddings | SentenceTransformers / OpenAI |
+| Embeddings | SentenceTransformers `all-MiniLM-L6-v2` (local) |
 | Vector Store | Chroma / FAISS |
 | PDF Parsing | PyMuPDF |
 | DOCX Parsing | python-docx |
@@ -61,7 +61,8 @@ See [`docs/architecture.md`](docs/architecture.md) for the full component breakd
 
 - Python 3.9+
 - pip
-- (Optional) OpenAI API key for cloud LLM/embeddings
+- Groq API key — get a free one at https://console.groq.com/keys
+- (Optional) OpenAI API key if using OpenAI as an alternative LLM provider
 
 ---
 
@@ -91,19 +92,24 @@ Edit `.env` to configure the application:
 
 ```env
 # LLM Configuration
-LLM_PROVIDER=openai          # openai | huggingface
-MODEL_NAME=gpt-3.5-turbo
+LLM_PROVIDER=groq          # groq | openai | huggingface
+MODEL_NAME=llama-3.1-70b-versatile
 
 # Embedding Configuration
-EMBEDDING_PROVIDER=sentence_transformers   # sentence_transformers | openai
+# Embeddings run locally — no API key required
+EMBEDDING_PROVIDER=sentence_transformers
 EMBEDDING_MODEL=all-MiniLM-L6-v2
 
 # Vector Store
 VECTOR_STORE_TYPE=chroma     # chroma | faiss
 VECTOR_STORE_PERSIST_DIR=./data/vectorstore
 
-# OpenAI API Key (required for openai provider)
-OPENAI_API_KEY=sk-...
+# Groq API Key (required for groq provider)
+# Get a free key at https://console.groq.com/keys
+GROQ_API_KEY=gsk_...
+
+# OpenAI API Key (optional fallback for openai provider)
+# OPENAI_API_KEY=sk-...
 
 # Chunking
 CHUNK_SIZE=1000

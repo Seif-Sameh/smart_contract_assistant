@@ -13,6 +13,81 @@ from app.generation.guardrails import (
 )
 
 
+class TestGetLLM:
+    """Tests for the get_llm factory function."""
+
+    def test_get_llm_groq_default(self):
+        """get_llm should return a ChatGroq instance for the groq provider."""
+        mock_chat_groq = MagicMock()
+        mock_instance = MagicMock()
+        mock_chat_groq.return_value = mock_instance
+
+        with patch.dict("sys.modules", {"langchain_groq": MagicMock(ChatGroq=mock_chat_groq)}):
+            from importlib import reload
+            import app.generation.llm as llm_module
+            reload(llm_module)
+
+            result = llm_module.get_llm(
+                provider="groq",
+                model_name="llama-3.1-70b-versatile",
+                groq_api_key="test-key",
+                temperature=0,
+            )
+
+        mock_chat_groq.assert_called_once_with(
+            model="llama-3.1-70b-versatile",
+            groq_api_key="test-key",
+            temperature=0,
+        )
+        assert result is mock_instance
+
+    def test_get_llm_groq_supported_models(self):
+        """get_llm should expose all supported Groq model names."""
+        from app.generation.llm import _GROQ_MODELS
+
+        # Verify the required models are present
+        required = {
+            "llama-3.1-70b-versatile",
+            "llama-3.1-8b-instant",
+            "mixtral-8x7b-32768",
+            "gemma2-9b-it",
+        }
+        assert required.issubset(_GROQ_MODELS)
+        assert len(_GROQ_MODELS) >= len(required)
+
+    def test_get_llm_groq_unsupported_model_raises(self):
+        """get_llm should raise ValueError for an unknown Groq model."""
+        from app.generation.llm import get_llm
+
+        with pytest.raises(ValueError, match="Unsupported Groq model"):
+            get_llm(provider="groq", model_name="gpt-4-is-not-groq")
+
+    def test_get_llm_unsupported_provider_raises(self):
+        """get_llm should raise ValueError for an unknown provider."""
+        from app.generation.llm import get_llm
+
+        with pytest.raises(ValueError, match="Unsupported LLM provider"):
+            get_llm(provider="unknown_provider")
+
+    def test_get_llm_openai_fallback(self):
+        """get_llm should return a ChatOpenAI instance for the openai provider."""
+        mock_chat_openai = MagicMock()
+        mock_instance = MagicMock()
+        mock_chat_openai.return_value = mock_instance
+
+        with patch.dict(
+            "sys.modules",
+            {"langchain_openai": MagicMock(ChatOpenAI=mock_chat_openai)},
+        ):
+            from importlib import reload
+            import app.generation.llm as llm_module
+            reload(llm_module)
+
+            result = llm_module.get_llm(provider="openai", model_name="gpt-4")
+
+        mock_chat_openai.assert_called_once()
+        assert result is mock_instance
+
 class TestGuardrails:
     """Tests for safety guardrails and disclaimers."""
 
