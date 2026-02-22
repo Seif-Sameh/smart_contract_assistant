@@ -1,8 +1,9 @@
 """Vector store management for document retrieval."""
 
+import os
+import shutil
+import uuid
 from typing import Dict, List, Optional
-
-from langchain_core.documents import Document
 
 
 class VectorStoreManager:
@@ -25,46 +26,29 @@ class VectorStoreManager:
         self.persist_directory = persist_directory
         self.embeddings = embeddings
         self._store = None
+        self._collection = None
+        self._client = None
 
-    def _get_or_create_store(self, texts: Optional[List[str]] = None, metadatas: Optional[List[Dict]] = None):
-        """Get existing store or create a new one.
-
-        Args:
-            texts: Optional list of texts to initialize the store with.
-            metadatas: Optional list of metadata dicts corresponding to texts.
-
-        Returns:
-            Initialized vector store instance.
-        """
+    def _get_or_create_store(self):
+        """Get existing store or create a new one."""
         if self._store is not None:
             return self._store
 
         if self.store_type == "chroma":
-            from langchain_community.vectorstores import Chroma
+            import chromadb
 
-            if texts:
-                self._store = Chroma.from_texts(
-                    texts=texts,
-                    embedding=self.embeddings,
-                    metadatas=metadatas,
-                    persist_directory=self.persist_directory,
-                )
-            else:
-                self._store = Chroma(
-                    embedding_function=self.embeddings,
-                    persist_directory=self.persist_directory,
-                )
+            os.makedirs(self.persist_directory, exist_ok=True)
+
+            # Use chromadb's PersistentClient directly to avoid Pydantic type inference issues
+            self._client = chromadb.PersistentClient(path=self.persist_directory)
+            self._collection = self._client.get_or_create_collection(
+                name="documents",
+                metadata={"hnsw:space": "cosine"},
+            )
+            self._store = self._collection
         elif self.store_type == "faiss":
-            from langchain_community.vectorstores import FAISS
-
-            if texts:
-                self._store = FAISS.from_texts(
-                    texts=texts,
-                    embedding=self.embeddings,
-                    metadatas=metadatas,
-                )
-            else:
-                self._store = None  # FAISS requires texts to initialize
+            # FAISS requires texts to initialize — store is set up on first add
+            pass
         else:
             raise ValueError(f"Unsupported vector store type: {self.store_type}")
 
@@ -79,10 +63,43 @@ class VectorStoreManager:
         texts = [chunk["text"] for chunk in chunks]
         metadatas = [chunk.get("metadata", {}) for chunk in chunks]
 
-        if self._store is None:
-            self._get_or_create_store(texts=texts, metadatas=metadatas)
-        else:
-            self._store.add_texts(texts=texts, metadatas=metadatas)
+        if self.store_type == "chroma":
+            self._get_or_create_store()
+
+            # Sanitize metadata: Chroma only supports str, int, float, bool values
+            sanitized_metadatas = []
+            for meta in metadatas:
+                sanitized = {}
+                for k, v in meta.items():
+                    if isinstance(v, (str, int, float, bool)):
+                        sanitized[k] = v
+                    else:
+                        sanitized[k] = str(v)
+                sanitized_metadatas.append(sanitized)
+
+            # Generate embeddings
+            embeddings_list = self.embeddings.embed_documents(texts)
+
+            # Generate unique IDs
+            ids = [str(uuid.uuid4()) for _ in texts]
+
+            self._collection.add(
+                documents=texts,
+                embeddings=embeddings_list,
+                metadatas=sanitized_metadatas,
+                ids=ids,
+            )
+        elif self.store_type == "faiss":
+            from langchain_community.vectorstores import FAISS
+
+            if self._store is None:
+                self._store = FAISS.from_texts(
+                    texts=texts,
+                    embedding=self.embeddings,
+                    metadatas=metadatas,
+                )
+            else:
+                self._store.add_texts(texts=texts, metadatas=metadatas)
 
     def similarity_search(self, query: str, k: int = 5) -> List[Dict]:
         """Perform similarity search against stored documents.
@@ -94,27 +111,59 @@ class VectorStoreManager:
         Returns:
             List of dicts with "text", "metadata", and "score" keys.
         """
-        if self._store is None:
-            return []
+        if self.store_type == "chroma":
+            if self._collection is None:
+                self._get_or_create_store()
+            if self._collection is None or self._collection.count() == 0:
+                return []
 
-        results = self._store.similarity_search_with_score(query, k=k)
-        return [
-            {
-                "text": doc.page_content,
-                "metadata": doc.metadata,
-                "score": float(score),
-            }
-            for doc, score in results
-        ]
+            # Generate query embedding
+            query_embedding = self.embeddings.embed_query(query)
+
+            results = self._collection.query(
+                query_embeddings=[query_embedding],
+                n_results=min(k, self._collection.count()),
+                include=["documents", "metadatas", "distances"],
+            )
+
+            output = []
+            if results and results["documents"] and results["documents"][0]:
+                for i, doc_text in enumerate(results["documents"][0]):
+                    metadata = results["metadatas"][0][i] if results["metadatas"] and results["metadatas"][0] else {}
+                    distance = results["distances"][0][i] if results["distances"] and results["distances"][0] else 0.0
+                    # Convert cosine distance to similarity score.
+                    # Chroma returns cosine distance in [0, 2] where 0 is identical
+                    # and 2 is opposite, so 1.0 - distance maps to [-1, 1] similarity.
+                    score = 1.0 - distance
+                    output.append({
+                        "text": doc_text,
+                        "metadata": metadata,
+                        "score": float(score),
+                    })
+            return output
+
+        elif self.store_type == "faiss":
+            if self._store is None:
+                return []
+            results = self._store.similarity_search_with_score(query, k=k)
+            return [
+                {
+                    "text": doc.page_content,
+                    "metadata": doc.metadata,
+                    "score": float(score),
+                }
+                for doc, score in results
+            ]
+
+        return []
 
     def clear(self) -> None:
         """Clear all documents from the vector store."""
         self._store = None
+        self._collection = None
+        self._client = None
 
         if self.store_type == "chroma":
-            import os
-            import shutil
-
             if os.path.exists(self.persist_directory):
                 shutil.rmtree(self.persist_directory)
 
@@ -127,6 +176,6 @@ class VectorStoreManager:
         Returns:
             LangChain retriever object, or None if store is empty.
         """
-        if self._store is None:
-            return None
-        return self._store.as_retriever(search_kwargs={"k": k})
+        # For Chroma direct client, we don't use LangChain retriever
+        # The similarity_search method is used directly instead
+        return None
