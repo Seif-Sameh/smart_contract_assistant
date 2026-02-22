@@ -1,10 +1,19 @@
+<<<<<<< HEAD
 """Document summarization using LangChain."""
+=======
+"""Document summarization using LangChain LCEL chains."""
+>>>>>>> d3d5d87 (.)
 
 from typing import Dict, List
 
 from langchain_core.documents import Document
+<<<<<<< HEAD
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
+=======
+from langchain_core.prompts import PromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+>>>>>>> d3d5d87 (.)
 
 
 MAP_PROMPT = PromptTemplate(
@@ -35,26 +44,9 @@ class DocumentSummarizer:
     """Summarizes document chunks using map-reduce or refine strategies."""
 
     def __init__(self, llm) -> None:
-        """Initialize the DocumentSummarizer.
-
-        Args:
-            llm: LangChain LLM object to use for summarization.
-        """
         self.llm = llm
 
     def summarize(self, chunks: List[Dict], strategy: str = "map_reduce") -> str:
-        """Summarize document chunks.
-
-        Args:
-            chunks: List of dicts with "text" and "metadata" keys.
-            strategy: Summarization strategy, one of "map_reduce" or "refine".
-
-        Returns:
-            Summary string.
-
-        Raises:
-            ValueError: If an unsupported strategy is specified.
-        """
         if strategy not in ("map_reduce", "refine"):
             raise ValueError(f"Unsupported strategy: {strategy}. Use 'map_reduce' or 'refine'.")
 
@@ -75,16 +67,22 @@ class DocumentSummarizer:
             return self._refine(documents)
 
     def _map_reduce(self, documents: List[Document]) -> str:
+<<<<<<< HEAD
         # Map step: summarize each document individually
         chain = MAP_PROMPT | self.llm | StrOutputParser()
         summaries = [chain.invoke({"text": doc.page_content}) for doc in documents]
 
         # Reduce step: combine all summaries
+=======
+        chain = MAP_PROMPT | self.llm | StrOutputParser()
+        summaries = [chain.invoke({"text": doc.page_content}) for doc in documents]
+>>>>>>> d3d5d87 (.)
         combined = "\n\n".join(summaries)
         reduce_chain = REDUCE_PROMPT | self.llm | StrOutputParser()
         return reduce_chain.invoke({"text": combined})
 
     def _refine(self, documents: List[Document]) -> str:
+<<<<<<< HEAD
         if not documents:
             return "No content to summarize."
         # Start with first document summary
@@ -92,11 +90,19 @@ class DocumentSummarizer:
         summary = first_chain.invoke({"text": documents[0].page_content})
 
         # Refine with each subsequent document
+=======
+        first_chain = MAP_PROMPT | self.llm | StrOutputParser()
+        summary = first_chain.invoke({"text": documents[0].page_content})
+>>>>>>> d3d5d87 (.)
         refine_chain = REFINE_PROMPT | self.llm | StrOutputParser()
         for doc in documents[1:]:
             summary = refine_chain.invoke({
                 "existing_summary": summary,
                 "text": doc.page_content,
             })
+<<<<<<< HEAD
 
         return summary
+=======
+        return summary
+>>>>>>> d3d5d87 (.)
