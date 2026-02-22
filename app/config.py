@@ -9,8 +9,8 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables or .env file."""
 
     # LLM Configuration
-    llm_provider: str = "openai"
-    model_name: str = "gpt-3.5-turbo"
+    llm_provider: str = "groq"
+    model_name: str = "llama-3.1-70b-versatile"
 
     # Embedding Configuration
     embedding_provider: str = "sentence_transformers"
@@ -29,6 +29,7 @@ class Settings(BaseSettings):
 
     # API Keys
     openai_api_key: Optional[str] = None
+    groq_api_key: Optional[str] = None
 
     # Data Directory
     data_dir: str = "./data"
