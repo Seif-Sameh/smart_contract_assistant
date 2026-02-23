@@ -10,11 +10,11 @@ from app.retrieval.retriever import DocumentRetriever
 class TestDocumentRetriever:
     """Tests for DocumentRetriever class."""
 
-    def _make_retriever(self, search_results=None):
+    def _make_retriever(self, search_results=None, rerank=False):
         """Helper to build a DocumentRetriever with a mocked VectorStoreManager."""
         mock_vsm = MagicMock()
         mock_vsm.similarity_search.return_value = search_results or []
-        return DocumentRetriever(vector_store_manager=mock_vsm, k=5), mock_vsm
+        return DocumentRetriever(vector_store_manager=mock_vsm, k=5, rerank=rerank), mock_vsm
 
     def test_retriever_returns_results(self):
         """retrieve() should return results from the vector store."""
@@ -60,8 +60,16 @@ class TestDocumentRetriever:
         assert "No relevant context found." in context
 
     def test_retriever_uses_configured_k(self):
-        """retrieve() should pass the configured k to similarity_search."""
+        """retrieve() should pass the configured k to similarity_search (no reranking)."""
         retriever, mock_vsm = self._make_retriever()
         retriever.k = 3
         retriever.retrieve("query")
         mock_vsm.similarity_search.assert_called_once_with("query", k=3)
+
+    def test_retriever_uses_configured_k_with_rerank(self):
+        """retrieve() with reranking should over-fetch k * rerank_multiplier candidates."""
+        retriever, mock_vsm = self._make_retriever(rerank=True)
+        retriever.k = 3
+        retriever.rerank_multiplier = 3
+        retriever.retrieve("query")
+        mock_vsm.similarity_search.assert_called_once_with("query", k=9)

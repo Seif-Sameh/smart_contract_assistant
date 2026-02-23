@@ -63,6 +63,8 @@ async def lifespan(app: FastAPI):
     retriever = DocumentRetriever(
         vector_store_manager=vector_store_manager,
         k=settings.top_k,
+        rerank=settings.rerank_enabled,
+        rerank_multiplier=settings.rerank_multiplier,
     )
 
     # Initialize LLM and RAG chain lazily (avoids requiring API keys on startup)
@@ -129,57 +131,99 @@ async def health_check() -> Dict:
 
 
 @app.post("/upload")
-async def upload_document(file: UploadFile = File(...)) -> Dict:
-    """Upload a PDF or DOCX document, parse, chunk, and index it.
+async def upload_document(files: List[UploadFile] = File(...)) -> Dict:
+    """Upload one or more PDF/DOCX documents, parse, chunk, and index them.
 
     Args:
-        file: The uploaded file (PDF or DOCX).
+        files: The uploaded files (PDF or DOCX).
 
     Returns:
-        Dict with message, chunks_created count, and filename.
+        Dict with message, total_chunks, and per-file results.
     """
     settings = get_settings()
+    results = []
+    total_chunks = 0
 
-    allowed_extensions = {".pdf", ".docx"}
-    ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in allowed_extensions:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type: {ext}. Allowed: {', '.join(allowed_extensions)}",
+    for file in files:
+        allowed_extensions = {".pdf", ".docx"}
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in allowed_extensions:
+            results.append({
+                "filename": file.filename,
+                "status": "skipped",
+                "detail": f"Unsupported file type: {ext}",
+            })
+            continue
+
+        # Save file to disk
+        safe_filename = os.path.basename(file.filename)
+        save_path = os.path.join(settings.data_dir, safe_filename)
+        try:
+            with open(save_path, "wb") as f:
+                shutil.copyfileobj(file.file, f)
+        except Exception as e:
+            results.append({
+                "filename": safe_filename,
+                "status": "error",
+                "detail": f"Failed to save: {e}",
+            })
+            continue
+
+        # Parse
+        try:
+            documents = parse_file(save_path)
+        except Exception as e:
+            results.append({
+                "filename": safe_filename,
+                "status": "error",
+                "detail": f"Failed to parse: {e}",
+            })
+            continue
+
+        # Chunk
+        chunks = chunk_documents(
+            documents,
+            chunk_size=settings.chunk_size,
+            chunk_overlap=settings.chunk_overlap,
         )
 
-    # Save file to disk
-    save_path = os.path.join(settings.data_dir, file.filename)
-    try:
-        with open(save_path, "wb") as f:
-            shutil.copyfileobj(file.file, f)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save file: {e}")
-
-    # Parse
-    try:
-        documents = parse_file(save_path)
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Failed to parse file: {e}")
-
-    # Chunk
-    chunks = chunk_documents(
-        documents,
-        chunk_size=settings.chunk_size,
-        chunk_overlap=settings.chunk_overlap,
-    )
-
-    # Embed and store
-    try:
-        vector_store_manager.add_documents(chunks)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to index document: {e}")
+        # Embed and store
+        try:
+            vector_store_manager.add_documents(chunks)
+            total_chunks += len(chunks)
+            results.append({
+                "filename": safe_filename,
+                "status": "success",
+                "chunks_created": len(chunks),
+            })
+        except Exception as e:
+            results.append({
+                "filename": safe_filename,
+                "status": "error",
+                "detail": f"Failed to index: {e}",
+            })
 
     return {
-        "message": f"Document '{file.filename}' uploaded and indexed successfully.",
-        "chunks_created": len(chunks),
-        "filename": file.filename,
+        "message": f"Processed {len(files)} file(s). Total chunks indexed: {total_chunks}.",
+        "total_chunks": total_chunks,
+        "files": results,
     }
+
+
+@app.get("/documents")
+async def list_documents() -> Dict:
+    """List all uploaded documents.
+
+    Returns:
+        Dict with list of uploaded document filenames.
+    """
+    settings = get_settings()
+    files = []
+    if os.path.exists(settings.data_dir):
+        for f in os.listdir(settings.data_dir):
+            if f.endswith((".pdf", ".docx")):
+                files.append(f)
+    return {"documents": sorted(files)}
 
 
 @app.post("/chat")
