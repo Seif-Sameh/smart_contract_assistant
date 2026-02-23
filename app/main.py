@@ -72,10 +72,13 @@ async def lifespan(app: FastAPI):
         llm = get_llm(
             provider=settings.llm_provider,
             model_name=settings.model_name,
+            groq_api_key=settings.groq_api_key,
         )
         rag_chain = RAGChain(llm=llm, retriever=retriever)
-    except Exception:
-        # LLM initialization may fail without API keys; chat endpoint will raise
+    except Exception as e:
+        import traceback
+        print(f"⚠️ LLM initialization failed: {e}")
+        traceback.print_exc()
         rag_chain = None
 
     yield

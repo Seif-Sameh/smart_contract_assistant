@@ -10,14 +10,14 @@ class Settings(BaseSettings):
 
     # LLM Configuration
     llm_provider: str = "groq"
-    model_name: str = "llama-3.1-70b-versatile"
+    model_name: str = "openai/gpt-oss-120b"
 
     # Embedding Configuration
     embedding_provider: str = "sentence_transformers"
     embedding_model: str = "all-MiniLM-L6-v2"
 
     # Vector Store Configuration
-    vector_store_type: str = "chroma"
+    vector_store_type: str = "fiass"
     vector_store_persist_dir: str = "./data/vectorstore"
 
     # Chunking Configuration

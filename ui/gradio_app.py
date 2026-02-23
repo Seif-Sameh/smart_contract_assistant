@@ -7,14 +7,7 @@ BACKEND_URL = "http://localhost:8000"
 
 
 def upload_file(file) -> str:
-    """Upload a document to the backend API.
-
-    Args:
-        file: File object from Gradio file upload component.
-
-    Returns:
-        Status message string.
-    """
+    """Upload a document to the backend API."""
     if file is None:
         return "No file selected."
 
@@ -36,16 +29,7 @@ def upload_file(file) -> str:
 
 
 def chat(message: str, history: list, session_id: str):
-    """Send a chat message and receive a response.
-
-    Args:
-        message: User's message string.
-        history: Gradio chat history list.
-        session_id: Current session identifier.
-
-    Returns:
-        Tuple of (response string, updated history, session_id).
-    """
+    """Send a chat message and receive a response."""
     if not message.strip():
         return "", history, session_id
 
@@ -58,36 +42,48 @@ def chat(message: str, history: list, session_id: str):
         if response.status_code == 200:
             data = response.json()
             answer = data["answer"]
+
+            # Format sources
+            sources = data.get("sources", [])
+            if sources:
+                source_text = "\n\n📄 **Sources:**\n"
+                for i, src in enumerate(sources, 1):
+                    meta = src.get("metadata", {})
+                    filename = meta.get("source", meta.get("filename", "Unknown"))
+                    page = meta.get("page", "N/A")
+                    score = src.get("score", 0)
+                    source_text += f"- Source {i}: {filename} (Page {page}, Score: {score:.2f})\n"
+                answer += source_text
+
             new_session_id = data.get("session_id", session_id)
-            history.append((message, answer))
+
+            history = history + [
+                gr.ChatMessage(role="user", content=message),
+                gr.ChatMessage(role="assistant", content=answer),
+            ]
             return "", history, new_session_id
         else:
             error = response.json().get("detail", response.text)
-            history.append((message, f"❌ Error: {error}"))
+            history = history + [
+                gr.ChatMessage(role="user", content=message),
+                gr.ChatMessage(role="assistant", content=f"❌ Error: {error}"),
+            ]
             return "", history, session_id
     except Exception as e:
-        history.append((message, f"❌ Connection error: {e}"))
+        history = history + [
+            gr.ChatMessage(role="user", content=message),
+            gr.ChatMessage(role="assistant", content=f"❌ Connection error: {e}"),
+        ]
         return "", history, session_id
 
 
 def clear_chat():
-    """Clear the chat history.
-
-    Returns:
-        Tuple of (empty message, empty history, empty session_id).
-    """
+    """Clear the chat history."""
     return "", [], ""
 
 
 def get_summary(filename: str) -> str:
-    """Request a document summary from the backend API.
-
-    Args:
-        filename: Name of the previously uploaded file.
-
-    Returns:
-        Summary string or error message.
-    """
+    """Request a document summary from the backend API."""
     if not filename.strip():
         return "Please enter a filename."
 
@@ -106,11 +102,7 @@ def get_summary(filename: str) -> str:
 
 
 def build_ui() -> gr.Blocks:
-    """Build and return the Gradio UI.
-
-    Returns:
-        gr.Blocks application object.
-    """
+    """Build and return the Gradio UI."""
     with gr.Blocks(title="Smart Contract Assistant") as demo:
         gr.Markdown("# 📄 Smart Contract Document Assistant")
         gr.Markdown("Upload contract documents and ask questions about them.")
