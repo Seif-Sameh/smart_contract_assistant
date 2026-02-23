@@ -57,12 +57,12 @@ def chat(message: str, history: list, session_id: str):
 
     try:
         response = requests.post(
-            f"{BACKEND_URL}/chat",
-            json={"question": message, "session_id": session_id or None},
+            f"{BACKEND_URL}/rag/invoke",
+            json={"input": {"question": message, "session_id": session_id or None}},
             timeout=60,
         )
         if response.status_code == 200:
-            data = response.json()
+            data = response.json()["output"]
             answer = data["answer"]
 
             # Format sources

@@ -9,6 +9,8 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from langserve import add_routes
+
 from app.config import get_settings
 from app.conversation.state import ConversationState
 from app.generation.chain import RAGChain
@@ -16,6 +18,7 @@ from app.generation.guardrails import apply_disclaimer, check_safety
 from app.ingestion.chunker import chunk_documents
 from app.ingestion.embedder import Embedder
 from app.ingestion.parser import parse_file
+from app.langserve_chain import create_rag_runnable, create_summarize_runnable
 from app.retrieval.retriever import DocumentRetriever
 from app.summarization.summarizer import DocumentSummarizer
 from app.vectorstore.store import VectorStoreManager
@@ -77,6 +80,13 @@ async def lifespan(app: FastAPI):
             groq_api_key=settings.groq_api_key,
         )
         rag_chain = RAGChain(llm=llm, retriever=retriever)
+
+        # Mount LangServe routes
+        langserve_runnable = create_rag_runnable(rag_chain, conversation_states)
+        add_routes(app, langserve_runnable, path="/rag")
+
+        summarize_runnable = create_summarize_runnable(rag_chain, settings)
+        add_routes(app, summarize_runnable, path="/summarize-chain")
     except Exception as e:
         import traceback
         print(f"⚠️ LLM initialization failed: {e}")
