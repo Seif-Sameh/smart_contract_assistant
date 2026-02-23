@@ -26,6 +26,8 @@ class Settings(BaseSettings):
 
     # Retrieval Configuration
     top_k: int = 5
+    rerank_enabled: bool = True
+    rerank_multiplier: int = 3
 
     # API Keys
     openai_api_key: Optional[str] = None

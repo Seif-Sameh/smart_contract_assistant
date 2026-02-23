@@ -6,22 +6,44 @@ import gradio as gr
 BACKEND_URL = "http://localhost:8000"
 
 
-def upload_file(file) -> str:
-    """Upload a document to the backend API."""
-    if file is None:
-        return "No file selected."
+def upload_file(files) -> str:
+    """Upload one or more documents to the backend API."""
+    if files is None or len(files) == 0:
+        return "No files selected."
 
     try:
-        with open(file.name, "rb") as f:
-            filename = file.name.split("/")[-1]
+        opened_files = []
+        try:
+            for file in files:
+                filename = file.name.split("/")[-1]
+                opened_files.append(
+                    ("files", (filename, open(file.name, "rb")))
+                )
+
             response = requests.post(
                 f"{BACKEND_URL}/upload",
-                files={"file": (filename, f)},
-                timeout=60,
+                files=opened_files,
+                timeout=120,
             )
+        finally:
+            # Close all file handles
+            for _, (_, fh) in opened_files:
+                fh.close()
+
         if response.status_code == 200:
             data = response.json()
-            return f"✅ {data['message']} ({data['chunks_created']} chunks created)"
+            status_lines = [f"📁 {data['message']}"]
+            for file_result in data.get("files", []):
+                fname = file_result["filename"]
+                fstatus = file_result["status"]
+                if fstatus == "success":
+                    chunks = file_result.get("chunks_created", 0)
+                    status_lines.append(f"  ✅ {fname} — {chunks} chunks")
+                elif fstatus == "skipped":
+                    status_lines.append(f"  ⚠️ {fname} — {file_result.get('detail', 'skipped')}")
+                else:
+                    status_lines.append(f"  ❌ {fname} — {file_result.get('detail', 'error')}")
+            return "\n".join(status_lines)
         else:
             return f"❌ Upload failed: {response.json().get('detail', response.text)}"
     except Exception as e:
@@ -110,8 +132,9 @@ def build_ui() -> gr.Blocks:
         with gr.Tab("Upload Document"):
             with gr.Row():
                 file_input = gr.File(
-                    label="Upload PDF or DOCX",
+                    label="Upload PDF or DOCX files",
                     file_types=[".pdf", ".docx"],
+                    file_count="multiple",
                 )
             with gr.Row():
                 upload_btn = gr.Button("Upload", variant="primary")

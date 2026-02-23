@@ -9,8 +9,11 @@ from langchain_core.output_parsers import StrOutputParser
 from app.retrieval.retriever import DocumentRetriever
 
 PROMPT_TEMPLATE = """You are an expert assistant for analyzing contracts and documents.
-Use ONLY the following context to answer the question. 
-If the answer is not in the context, say "I don't have enough information in the document to answer that."
+You may receive context from MULTIPLE different documents. Use ONLY the provided context to answer.
+If the answer is not in the context, say "I don't have enough information in the documents to answer that."
+
+When answering, ALWAYS cite which document (Source file) and page the information comes from.
+If information comes from multiple documents, reference all relevant sources.
 
 Context:
 {context}
@@ -20,7 +23,7 @@ Conversation History:
 
 Question: {question}
 
-Answer with specific references to the relevant sections/pages:"""
+Answer with specific references to the relevant source documents and pages:"""
 
 
 class RAGChain:
