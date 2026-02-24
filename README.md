@@ -14,7 +14,7 @@ A production-ready Python web application for intelligent contract and document 
 - 🛡️ **Guardrails**: Safety filtering and automatic legal disclaimers
 - 🌐 **REST API**: FastAPI backend with full OpenAPI documentation
 - 🖥️ **Web UI**: Gradio interface for upload, chat, and summarization
-- 📊 **Evaluation Pipeline**: Built-in retrieval and answer quality metrics
+- 📊 **Evaluation Pipeline**: Built-in retrieval and answer quality metrics with RAGAS integration
 
 ---
 
@@ -246,7 +246,7 @@ Tests use `unittest.mock` extensively — no API keys or ML models are required.
 - [ ] Re-ranking with cross-encoder models
 - [ ] Streaming responses for real-time chat
 - [ ] Authentication and multi-user support
-- [ ] RAGAS-based automated evaluation
+- [x] RAGAS-based automated evaluation
 - [ ] Contract clause extraction and classification
 - [ ] Comparison mode for multiple contracts
 - [ ] Export conversation history as PDF/DOCX
