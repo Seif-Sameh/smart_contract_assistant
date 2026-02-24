@@ -1,6 +1,6 @@
 """Evaluation pipeline for RAG system performance measurement."""
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 class RAGEvaluator:
@@ -82,20 +82,152 @@ class RAGEvaluator:
             "results": results,
         }
 
-    def run_full_evaluation(self, qa_pairs: List[Dict]) -> Dict:
+    def evaluate_with_ragas(
+        self,
+        qa_pairs: List[Dict],
+        metrics: Optional[List[Any]] = None,
+        llm: Optional[Any] = None,
+        embeddings: Optional[Any] = None,
+    ) -> Dict:
+        """Evaluate the RAG pipeline using RAGAS metrics.
+
+        Each entry in ``qa_pairs`` must contain a ``"question"`` key.
+        Optionally it may contain:
+        - ``"expected_answer"`` – reference answer used for metrics such as
+          ``context_recall`` and ``answer_correctness``.
+        - ``"contexts"`` – pre-fetched list of context strings. When absent,
+          contexts are retrieved automatically via ``self.retriever``.
+
+        Args:
+            qa_pairs: List of dicts describing each evaluation sample.
+            metrics: RAGAS metric instances to evaluate. Defaults to
+                ``[faithfulness, answer_relevancy, context_precision]``.
+            llm: Optional LangChain-compatible LLM to use for RAGAS scoring.
+                When *None*, RAGAS will use its default LLM.
+            embeddings: Optional LangChain-compatible embeddings model to use
+                for RAGAS scoring. When *None*, RAGAS will use its default.
+
+        Returns:
+            Dict with keys:
+                - ``"scores"``: Per-metric aggregate scores (metric_name → float).
+                - ``"results"``: Per-sample dicts containing question, response,
+                  and individual metric scores.
+                - ``"total_evaluated"``: Number of samples evaluated.
+        """
+        try:
+            from ragas import EvaluationDataset, SingleTurnSample, evaluate
+            from ragas.metrics.collections import (
+                answer_relevancy,
+                context_precision,
+                faithfulness,
+            )
+        except ImportError as exc:  # pragma: no cover
+            raise ImportError(
+                "ragas is required for RAGAS evaluation. "
+                "Install it with: pip install ragas"
+            ) from exc
+
+        if metrics is None:
+            metrics = [faithfulness, answer_relevancy, context_precision]
+
+        samples = []
+        for pair in qa_pairs:
+            question = pair["question"]
+            reference = pair.get("expected_answer", None)
+
+            # Retrieve contexts if not provided
+            if "contexts" in pair:
+                contexts = list(pair["contexts"])
+            else:
+                retrieved = self.retriever.retrieve(question)
+                contexts = [doc.get("text", "") for doc in retrieved]
+
+            # Generate answer
+            response = self.chain.invoke(question)
+            answer = response.get("answer", "")
+
+            sample_kwargs: Dict[str, Any] = {
+                "user_input": question,
+                "response": answer,
+                "retrieved_contexts": contexts,
+            }
+            if reference is not None:
+                sample_kwargs["reference"] = reference
+
+            samples.append(SingleTurnSample(**sample_kwargs))
+
+        dataset = EvaluationDataset(samples=samples)
+        result = evaluate(
+            dataset=dataset,
+            metrics=metrics,
+            llm=llm,
+            embeddings=embeddings,
+            raise_exceptions=False,
+        )
+
+        # Build per-sample results list
+        result_df = result.to_pandas()
+        sample_results = []
+        for i, pair in enumerate(qa_pairs):
+            row = result_df.iloc[i]
+            sample_result: Dict[str, Any] = {
+                "question": pair["question"],
+                "response": row.get("response", ""),
+            }
+            for metric in metrics:
+                metric_name = metric.name
+                sample_result[metric_name] = row.get(metric_name, None)
+            sample_results.append(sample_result)
+
+        # Aggregate scores per metric
+        scores: Dict[str, float] = {}
+        for metric in metrics:
+            metric_name = metric.name
+            if metric_name in result_df.columns and not result_df[metric_name].isna().all():
+                scores[metric_name] = float(result_df[metric_name].mean())
+
+        return {
+            "scores": scores,
+            "results": sample_results,
+            "total_evaluated": len(qa_pairs),
+        }
+
+    def run_full_evaluation(
+        self,
+        qa_pairs: List[Dict],
+        include_ragas: bool = False,
+        ragas_llm: Optional[Any] = None,
+        ragas_embeddings: Optional[Any] = None,
+    ) -> Dict:
         """Run the complete evaluation pipeline.
 
         Args:
             qa_pairs: List of dicts with "question" and "expected_answer" keys.
+            include_ragas: When *True*, also run RAGAS-based evaluation and
+                include the results under the ``"ragas_metrics"`` key.
+            ragas_llm: Optional LLM to pass to :meth:`evaluate_with_ragas`.
+            ragas_embeddings: Optional embeddings to pass to
+                :meth:`evaluate_with_ragas`.
 
         Returns:
-            Dict combining retrieval and answer quality metrics.
+            Dict combining retrieval and answer quality metrics. When
+            ``include_ragas`` is *True*, also contains a ``"ragas_metrics"``
+            key with the RAGAS evaluation results.
         """
         queries = [pair["question"] for pair in qa_pairs]
         retrieval_metrics = self.evaluate_retrieval(queries)
         answer_metrics = self.evaluate_answers(qa_pairs)
 
-        return {
+        full_result: Dict[str, Any] = {
             "retrieval_metrics": retrieval_metrics,
             "answer_metrics": answer_metrics,
         }
+
+        if include_ragas:
+            full_result["ragas_metrics"] = self.evaluate_with_ragas(
+                qa_pairs,
+                llm=ragas_llm,
+                embeddings=ragas_embeddings,
+            )
+
+        return full_result

@@ -46,7 +46,50 @@ Evaluation was conducted using a curated set of question-answer pairs derived fr
 
 ---
 
-## Results
+## RAGAS Metrics
+
+RAGAS (Retrieval Augmented Generation Assessment) is now integrated into the evaluation pipeline. It provides LLM-judge-based metrics for automatic quality measurement.
+
+### Available Metrics
+
+| Metric | Description | Requires Reference? |
+|--------|-------------|---------------------|
+| `faithfulness` | Fraction of answer claims supported by retrieved context | No |
+| `answer_relevancy` | How well the answer addresses the asked question | No |
+| `context_precision` | Fraction of retrieved chunks that are relevant to the question | No |
+| `context_recall` | Fraction of ground-truth answer that is covered by retrieved context | Yes |
+| `answer_correctness` | Semantic similarity of generated answer to the reference answer | Yes |
+
+### Usage
+
+```python
+from app.evaluation.evaluator import RAGEvaluator
+
+evaluator = RAGEvaluator(retriever=retriever, chain=chain)
+
+qa_pairs = [
+    {
+        "question": "What are the payment terms?",
+        "expected_answer": "Net 30 days from invoice.",       # optional
+        "contexts": ["Payment is due 30 days after invoice."],  # optional
+    },
+]
+
+# Standalone RAGAS evaluation
+ragas_results = evaluator.evaluate_with_ragas(qa_pairs)
+print(ragas_results["scores"])  # {"faithfulness": 0.92, ...}
+
+# Combined evaluation (retrieval + answers + RAGAS)
+full_results = evaluator.run_full_evaluation(qa_pairs, include_ragas=True)
+print(full_results["ragas_metrics"]["scores"])
+```
+
+> **Note:** RAGAS metrics rely on an LLM judge. Pass a `llm=` argument to
+> `evaluate_with_ragas()` or `run_full_evaluation()` to use the same LLM
+> already configured for the RAG pipeline. When no LLM is provided, RAGAS
+> falls back to its own default.
+
+---
 
 | Question | Expected Answer (Summary) | Generated Answer (Summary) | Faithful? |
 |----------|--------------------------|---------------------------|-----------|
@@ -65,13 +108,13 @@ Evaluation was conducted using a curated set of question-answer pairs derived fr
 2. **LLM variability**: Generated answers may vary between runs due to LLM temperature settings.
 3. **Embedding quality**: Retrieval performance depends on the quality of the chosen embedding model.
 4. **Context window limits**: Very long contracts may require summarization before retrieval to fit within token limits.
-5. **No hallucination detection**: The system does not automatically detect when the LLM generates unsupported claims.
+5. **No hallucination detection**: The system does not automatically detect when the LLM generates unsupported claims. Use `evaluate_with_ragas()` with the `faithfulness` metric to measure how well answers are grounded in retrieved context.
 
 ---
 
 ## Recommendations
 
-1. **Add semantic similarity metrics**: Integrate RAGAS or DeepEval for automated faithfulness and relevance scoring.
+1. **Add semantic similarity metrics**: Integrate RAGAS or DeepEval for automated faithfulness and relevance scoring. ✅ RAGAS is now integrated via `RAGEvaluator.evaluate_with_ragas()` and the `include_ragas` flag on `run_full_evaluation()`.
 2. **Build a gold-standard test set**: Manually annotate 50–100 contract QA pairs for rigorous evaluation.
 3. **Tune chunking parameters**: Experiment with chunk sizes between 500–2000 tokens and measure retrieval recall.
 4. **Increase top-k for complex queries**: Use `top_k=8` or higher for multi-clause questions.
