@@ -6,6 +6,17 @@ import gradio as gr
 BACKEND_URL = "http://localhost:8000"
 
 
+def fetch_document_list():
+    """Fetch the list of uploaded documents from the backend."""
+    try:
+        response = requests.get(f"{BACKEND_URL}/documents", timeout=10)
+        if response.status_code == 200:
+            return response.json().get("documents", [])
+    except Exception:
+        pass
+    return []
+
+
 def upload_file(files) -> str:
     """Upload one or more documents to the backend API."""
     if files is None or len(files) == 0:
@@ -50,6 +61,19 @@ def upload_file(files) -> str:
         return f"❌ Error: {e}"
 
 
+def refresh_document_dropdown():
+    """Refresh the document dropdown with the latest uploaded files."""
+    docs = fetch_document_list()
+    return gr.Dropdown(choices=docs, value=None)
+
+
+def on_upload_and_refresh(files):
+    """Upload files, then refresh the dropdown."""
+    status = upload_file(files)
+    dropdown_update = refresh_document_dropdown()
+    return status, dropdown_update
+
+
 def chat(message: str, history: list, session_id: str):
     """Send a chat message and receive a response."""
     if not message.strip():
@@ -57,12 +81,12 @@ def chat(message: str, history: list, session_id: str):
 
     try:
         response = requests.post(
-            f"{BACKEND_URL}/rag/invoke",
-            json={"input": {"question": message, "session_id": session_id or None}},
+            f"{BACKEND_URL}/chat",
+            json={"question": message, "session_id": session_id or None},
             timeout=60,
         )
         if response.status_code == 200:
-            data = response.json()["output"]
+            data = response.json()
             answer = data["answer"]
 
             # Format sources
@@ -73,8 +97,8 @@ def chat(message: str, history: list, session_id: str):
                     meta = src.get("metadata", {})
                     filename = meta.get("source", meta.get("filename", "Unknown"))
                     page = meta.get("page", "N/A")
-                    score = src.get("score", 0)
-                    source_text += f"- Source {i}: {filename} (Page {page}, Score: {score:.2f})\n"
+                    score = src.get("rerank_score", src.get("score", 0))
+                    source_text += f"- Source {i}: {filename} (Page {page}, Relevance: {score:.2f})\n"
                 answer += source_text
 
             new_session_id = data.get("session_id", session_id)
@@ -106,8 +130,8 @@ def clear_chat():
 
 def get_summary(filename: str) -> str:
     """Request a document summary from the backend API."""
-    if not filename.strip():
-        return "Please enter a filename."
+    if not filename or not filename.strip():
+        return "Please select a document first."
 
     try:
         response = requests.post(
@@ -141,18 +165,39 @@ def build_ui() -> gr.Blocks:
             with gr.Row():
                 upload_status = gr.Textbox(label="Upload Status", interactive=False)
 
-            upload_btn.click(fn=upload_file, inputs=[file_input], outputs=[upload_status])
-
             gr.Markdown("---")
             gr.Markdown("### 📝 Document Summary")
             with gr.Row():
-                summary_filename = gr.Textbox(label="Filename to Summarize")
+                summary_dropdown = gr.Dropdown(
+                    label="Select Document to Summarize",
+                    choices=fetch_document_list(),
+                    interactive=True,
+                )
+                refresh_btn = gr.Button("🔄 Refresh", scale=0)
             with gr.Row():
                 summary_btn = gr.Button("Get Summary")
             with gr.Row():
                 summary_output = gr.Textbox(label="Summary", lines=10, interactive=False)
 
-            summary_btn.click(fn=get_summary, inputs=[summary_filename], outputs=[summary_output])
+            # Upload → update status + refresh dropdown
+            upload_btn.click(
+                fn=on_upload_and_refresh,
+                inputs=[file_input],
+                outputs=[upload_status, summary_dropdown],
+            )
+
+            # Manual refresh button
+            refresh_btn.click(
+                fn=refresh_document_dropdown,
+                outputs=[summary_dropdown],
+            )
+
+            # Summarize selected document
+            summary_btn.click(
+                fn=get_summary,
+                inputs=[summary_dropdown],
+                outputs=[summary_output],
+            )
 
         with gr.Tab("Chat"):
             session_state = gr.State("")
